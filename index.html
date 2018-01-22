@@ -1,0 +1,613 @@
+﻿
+<!-- saved from url=(0046)https://kxdviz.firebaseapp.com/demo/shape.html -->
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    
+    <title>MovingBus</title>
+    <script type="text/javascript" src="script/movingBus.min.js"></script>
+    <script type="text/javascript" src="script/timeline.js"></script>
+    <script type="text/javascript" src="script/jquery-3.2.1.min.js"></script>
+  </head>
+<body>
+    <div>
+        <div style="width: 350px;">
+            <label>行駛平均速率(m/s): </label><input type="number" id="busSpeed" value="15"><br>
+            <label>資料平均間隔時間(s): </label><input type="number" id="dataTimeSpacing" value="30"><br>
+            <label>資料缺漏機率: </label><input type="number" id="dataMissingProb" value="0.05"><br>
+            <label>車輛數量: </label><input type="number" id="numBuses" value="24"><br>
+            <label>發車間距(s): </label><input type="number" id="busHeadway" value="100"><br>
+            <button type="button" id="start">start animation!!</button>
+        </div>
+        <div style="width: 350px;margin-top:1%;">
+            <label>canvas寬度: </label><input type="number" id="cnvWidth" value="1000"><br>
+            <label>canvas高度: </label><input type="number" id="cnvHeight" value="600"><br>
+            <label>canvas左側經度: </label><input type="text" id="leftLng" value="121.41677856445314"><br>
+            <label>canvas上側緯度: </label><input type="text" id="topLat" value="25.114668236834433"><br>
+            <label>canvas右側經度: </label><input type="text" id="rightLng" value="121.68045043945314"><br>
+            <label>canvas下側緯度: </label><input type="text" id="bottomLat" value="24.995237824196362"><br>
+            <button type="button" id="changeCnv">change cnavas!!</button>
+        </div>
+        <div id="timelineDiv" style="width: 350px; height:300px;"></div>
+        <div id="cnv" style="z-index:-99;position:absolute;top:0;"></div>
+
+    </div>
+    <script type="text/javascript">
+        document.getElementById("start").addEventListener("click", function () {
+            _BUSSPEED = parseFloat(document.getElementById("busSpeed").value);
+            _DATATIMESPACING = parseFloat(document.getElementById("dataTimeSpacing").value);
+            _DATAMISSINGPROB = parseFloat(document.getElementById("dataMissingProb").value);
+            numBuses = parseFloat(document.getElementById("numBuses").value);
+            busHeadway = parseFloat(document.getElementById("busHeadway").value);
+            start();
+        });
+        document.getElementById("changeCnv").addEventListener("click", function () {
+            cnvWidth = parseFloat(document.getElementById("cnvWidth").value);
+            cnvHeight = parseFloat(document.getElementById("cnvHeight").value);
+            boundary = {
+                leftLng: parseFloat(document.getElementById("leftLng").value),
+                topLat: parseFloat(document.getElementById("topLat").value),
+                rightLng: parseFloat(document.getElementById("rightLng").value),
+                bottomLat: parseFloat(document.getElementById("bottomLat").value)
+            };
+            movingBusCnv.setCanvas(cnvWidth, cnvHeight, boundary);
+        });
+
+        var div = document.getElementById("cnv");
+        var appendCanvas = function (cnv) {
+            div.appendChild(cnv);
+        };
+
+
+        // ==================== 可調整之參數 ====================
+
+        // 公車相關設定
+        var _BUSSPEED = 15; // 設定公車平均行駛速率(公尺/秒)。1s行駛15m，相當於時速54km
+        var _DATATIMESPACING = 30; // 設定資料平均間隔時間(秒)
+        var _DATAMISSINGPROB = 0.05; // 設定資料缺少機率
+        var numBuses = 24; // 設定公車數量
+        var busHeadway = 100; // 設定公車發車之時間間距(秒)
+        movingBus.Bus.default.plateDisplay = true; // 修改公車Bus物件之預設值：是否顯示車牌(預設為true)
+        movingBus.Bus.default.platePosition = "b"; // 修改公車Bus物件之預設值：車牌顯示之位置，可為"t": icon上方；或"b": icon下方(預設為"b")
+        movingBus.Bus.default.plateFontSize = 10; // 修改公車Bus物件之預設值：車牌顯示字體之大小(預設為10)
+
+        // 投影法設定
+        var mapProjection = "WGS84"; // "WebMercator";
+
+        // icon相關設定
+        var icon1Key = "icon1";
+        var icon1Url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQv3qMaeZJcOR8mJdfSfXESIWbWaW_v6vE_FdCNWYU-gns7JKSj";
+        var icon2Key = "icon2";
+        var icon2Url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSvHV9HqGKDngcAP_RxLM6ImIg54U6dUXwR4mrAAEHpt-stVa0F";
+        var icon3Key = "icon3";
+        var icon3Url = "http://www.myiconfinder.com/uploads/iconsets/256-256-3ac514df5b4f36e2d8d525fe7f63b83c.png";
+
+        // shape相關設定
+        var WKTUrl1 = "data/shape.txt";
+        var WKTUrl2 = "data/shape2.txt";
+        var WKTUrl3 = "/data/shape3.txt";
+
+        // boundary相關設定
+        var boundary = {
+            leftLng: 121.41677856445314,
+            topLat: 25.114668236834433,
+            rightLng: 121.68045043945314,
+            bottomLat: 24.995237824196362
+        };
+
+        // canvas設定
+        var cnvWidth = 1000;
+        var cnvHeight = 600;
+
+        // ========end========= 可調整之參數 ========end=========
+
+        // ==================== 共用方法 ====================
+
+        // 產生icon的快取canvas，圖片來源為url
+        // url: 可為base64或可取得圖片之位置
+        // iconKey: 用於存取之key值
+        // iconWidth: icon所應呈現之寬度(非原始圖片之寬度)
+        // iconHeight: icon所應呈現之高度(非原始圖片之高度)
+        // targetX: icon呈現位置時的對準點x值(水平)
+        // targetY: icon呈現位置時的對準點y值(垂直)
+        var loadIconFromUrl = function (url, iconKey, iconWidth, iconHeight, targetX, targetY) {
+            movingBus.icons.add(iconKey, url, iconWidth, iconHeight, targetX, targetY);
+        };
+
+        // 使用給定之canvas內容當做icon(注意：此方法是直接使用所傳入之canvas，並非額外產生新的canvas)
+        var loadIconFromCnv = function (cnv, iconKey, targetX, targetY) {
+            movingBus.icons.addFromCanvas(iconKey, cnv, targetX, targetY);
+        };
+
+        // 產生shape資料之物件Shape，其中資料來源為url，資料需為WKT
+        var createShapeFromWKTUrl = function (url) {
+            var WKT;
+            var oReq = new XMLHttpRequest();
+            oReq.onload = function () {
+                WKT = this.responseText;
+            };
+            oReq.open("get", url, false);
+            oReq.send();
+            return movingBus.Shape.createFromWKT(WKT);
+        };
+
+        // 產生公車之物件Bus
+        // shape: Shape物件
+        // icon:{url, width, height, key}: icon圖片，可指定url, base64, 或js內已快取之canvas
+        //                                 若欲指定url或base64，則使用url屬性，並且必須指定width與height
+        //                                 若欲使用javascript內快取的icon，則使用key屬性，其值為icon的key值
+        // movingBusCnv: 必須為movingBus.Canvas物件
+        var createMovingBus = function (shape, plate, icon,dists,times, movingBusCnv) {
+            var BUSSPEED = _BUSSPEED + _BUSSPEED * Math.round((Math.random() - 0.5)); // 加上一半的浮動率
+            var DATATIMESPACING = _DATATIMESPACING;
+            var DATADISTSPACING = BUSSPEED * DATATIMESPACING;
+            var DATAMISSINGPROB = _DATAMISSINGPROB + _DATAMISSINGPROB * Math.round((Math.random() - 0.5)); // 加上一半的浮動率
+
+            var totalDist = shape.totalDist;
+            var numPoints = Math.ceil(totalDist / DATADISTSPACING) + 1;
+            var dists = new Array(numPoints); // 產生行駛距離陣列
+            var times = new Array(numPoints);
+
+            var dists = movingDist;
+            var times = movingTime;
+
+
+            var ii, len;
+
+            // 啟始點必為0
+            dists[0] = 0; times[0] = 0;
+
+            // 設定中間各個資料點(除了啟始點、倒數第二點與最末點)，假設中途個點皆有機率缺少資料
+            len = numPoints - 2;
+            for (ii = 1; ii < len; ii++) {
+                if (Math.random() >= DATAMISSINGPROB) { // 未缺少資料
+                    times[ii] = Math.round(ii * DATATIMESPACING + DATATIMESPACING * (Math.random() - 0.5) / 5); // 浮動 +-DATATIMESPACING/10
+                    dists[ii] = Math.round(ii * DATADISTSPACING + DATADISTSPACING * (Math.random() - 0.5) / 5); // 浮動 +-DATADISTSPACING/10
+                }
+                else { // 缺少資料
+                    times[ii] = null;
+                    dists[ii] = null;
+                }
+            }
+
+            // 設定最後兩點之值
+            times[ii] = ii * DATATIMESPACING;
+            dists[ii] = ii * DATADISTSPACING;
+            ii++;
+            times[ii] = times[ii - 1] + Math.round((totalDist - dists[ii - 1]) / BUSSPEED);
+            dists[ii] = totalDist;
+
+            // Bus物件建構子參數限制：
+            // dists: 距離整數陣列，每個時間點的總移動路徑長(公尺)，其中dists[0]必須為0。
+            //        若某個時間點缺少資料時，需指定為null，其中最後一個元素不可為null
+            // times: 時間整數陣列，每個時間點的總花費秒數，其中times[0]必須為0。
+            //        若某個時間點缺少資料時，需指定為null，其中最後一個元素不可為null
+            return new movingBus.Bus(shape, plate, icon, dists, times, movingBusCnv);
+        }
+
+        // ========end========= 共用方法 ========end=========
+
+        // ~~~~~ 開始產生公車動畫
+
+        // 讀取icon
+        loadIconFromUrl(icon1Url, icon1Key, 16, 16, 8, 8);
+        loadIconFromUrl(icon2Url, icon2Key, 16, 16, 8, 8);
+        loadIconFromUrl(icon3Url, icon3Key, 16, 16, 8, 8);
+
+        // 產生shape
+        var shape1 = createShapeFromWKTUrl(WKTUrl1);
+        var shape2 = createShapeFromWKTUrl(WKTUrl2);
+        //var shape3 = createShapeFromWKTUrl(WKTUrl3);
+
+        // 產生用來作公車動畫之canvas
+        var cnv = document.createElement("canvas");
+        var ctx = cnv.getContext("2d");
+        appendCanvas(cnv);
+        cnv.width = cnvWidth;
+        cnv.height = cnvHeight;
+        var movingBusCnv = new movingBus.Canvas(cnv, mapProjection, boundary);
+
+        var buses, busesTravelTimes, animate, animationId;
+
+
+        var movingTime = [[0,31,
+60,
+87,
+117,
+146,
+177,
+207,
+235,
+262,
+293,
+324,
+353,
+414,
+441,
+471,
+498,
+527,
+554,
+584,
+611,
+639,
+667,
+697,
+725,
+753,
+783,
+810,
+841,
+871,
+902,
+929,
+958,
+989,
+1020,
+1048,
+1075,
+1159,
+1190,
+1219,
+1247,
+1278,
+1306,
+1337,
+1364,
+1391,
+1421,
+1451,
+1478,
+1508,
+1539,
+1566,
+1593,
+1647,
+1674,
+1701,
+1732,
+1762,
+1789,
+1816,
+1843,
+1873,
+1934,
+1964,
+1994,
+2022,
+2052,
+2080,
+2111,
+2169,
+2196,
+2225,
+2256,
+2316,
+2345,
+2375,
+2403,
+2430,
+2461],[0,
+27,
+58,
+116,
+174,
+204,
+231,
+258,
+289,
+318,
+349,
+406,
+434,
+465,
+496,
+526,
+580,
+610,
+641,
+669,
+700,
+729,
+758,
+789,
+847,
+874,
+904,
+935,
+965,
+992,
+1052,
+1081,
+1111,
+1141,
+1170,
+1199,
+1227,
+1255,
+1283,
+1313,
+1340,
+1369,
+1397,
+1425,
+1454,
+1483,
+1510,
+1537,
+1567,
+1596,
+1625,
+1652,
+1709,
+1740,
+1768,
+1797,
+1826,
+1881,
+1909,
+1936,
+1967,
+1998,
+2028,
+2059,
+2089,
+2144,
+2172,
+2199,
+2230,
+2257,
+2284,
+2314,
+2344,
+2373,
+2403,
+2458
+        ]];
+
+
+        var movingDist = [[0,272,
+512,
+876,
+1147,
+1423,
+1647,
+1886,
+2126,
+2411,
+2753,
+2957,
+3187,
+3838,
+4201,
+4549,
+4873,
+5117,
+5423,
+5710,
+6059,
+6308,
+6669,
+7007,
+7399,
+7675,
+7916,
+8192,
+8580,
+8949,
+9180,
+9514,
+9806,
+10006,
+10292,
+10666,
+11008,
+11979,
+12236,
+12529,
+12885,
+13207,
+13475,
+13859,
+14117,
+14341,
+14670,
+14879,
+15179,
+15434,
+15811,
+16118,
+16346,
+17002,
+17371,
+17769,
+17996,
+18232,
+18496,
+18805,
+19162,
+19517,
+20079,
+20411,
+20687,
+20893,
+21121,
+21428,
+21713,
+22279,
+22563,
+22814,
+23171,
+23790,
+24007,
+24395,
+24764,
+25087,
+25100],
+[0,
+274,
+561,
+1227,
+1883,
+2110,
+2361,
+2618,
+3008,
+3350,
+3667,
+4286,
+4656,
+4920,
+5194,
+5421,
+6073,
+6413,
+6654,
+6882,
+7209,
+7504,
+7890,
+8125,
+8667,
+9014,
+9298,
+9530,
+9848,
+10129,
+10765,
+11067,
+11277,
+11611,
+11846,
+12112,
+12497,
+12809,
+13191,
+13514,
+13838,
+14220,
+14581,
+14790,
+15038,
+15303,
+15508,
+15781,
+16155,
+16462,
+16853,
+17130,
+17682,
+17986,
+18236,
+18503,
+18830,
+19298,
+19610,
+19913,
+20129,
+20467,
+20671,
+20991,
+21324,
+21875,
+22114,
+22412,
+22677,
+22987,
+23369,
+23645,
+23998,
+24227,
+24614,
+25100
+]];
+        
+        var start = function () {
+            if (animationId !== undefined) {
+                cancelAnimationFrame(animtionId);
+                animtionId = undefined;
+
+
+            }
+
+            // 產生公車
+            buses = new Array(numBuses);
+            busesTravelTimes = new Array(numBuses);
+            for (var ii = 0; ii < numBuses; ii++) {
+                if (ii % 2 == 0) {
+                    buses[ii] = createMovingBus(shape1, "qqq-111", { key: icon1Key }, movingDist[0], movingTime[0], movingBusCnv);
+                    busesTravelTimes[ii] = -ii * (busHeadway * (1 + 0.2 * (Math.random() - 0.5)));
+                }
+                if (ii % 2 == 1) {
+                    buses[ii] = createMovingBus(shape2, "qqq-0812", { key: icon2Key }, movingDist[1], movingTime[1], movingBusCnv);
+                    busesTravelTimes[ii] = -(ii - Math.floor(2 / 3)) * (busHeadway * (1 + 0.2 * (Math.random() - 0.5)));
+                }
+                //if (ii % 3 == 2) {
+                //    buses[ii] = createMovingBus(shape3, "plate-" + ii, { key: icon3Key }, movingBusCnv);
+                //    busesTravelTimes[ii] = -(ii - Math.floor(2 * 2 / 3)) * (busHeadway * (1 + 0.2 * (Math.random() - 0.5)));
+                //}
+            }
+            //for (; ii < 2 * 2 / 3; ii++) {
+            //    buses[ii] = createMovingBus(shape2, "qqq-0812", { key: icon2Key }, movingDist[1], movingTime[1], movingBusCnv);
+            //    busesTravelTimes[ii] = -(ii - Math.floor(2 / 3)) * (busHeadway * (1 + 0.2 * (Math.random() - 0.5)));
+            //}
+            //for (; ii < 2; ii++) {
+            //    buses[ii] = createMovingBus(shape3, "plate-" + ii, { key: icon3Key }, movingBusCnv);
+            //    busesTravelTimes[ii] = -(ii - Math.floor(2 * 2 / 3)) * (busHeadway * (1 + 0.2 * (Math.random() - 0.5)));
+            //}
+
+            // 動畫方法
+            animate = function () {
+                // console.time("one frame");
+                ctx.clearRect(0, 0, cnvWidth, cnvHeight);
+                for (var ii = 0; ii < numBuses; ii++) {
+                    if (clickornot == 1) {
+                        buses[ii].setTime(0);
+                        busesTravelTimes[ii] = 0;
+                        clickornot = 0;
+                        console.log('setTime~');
+                       
+                    }
+                    else if (clickornot == 0)
+                        buses[ii].drive(busesTravelTimes[ii]);
+                    busesTravelTimes[ii]++;
+                }
+                //animtionId = requestAnimationFrame(animate);
+                //console.timeEnd("one frame");
+            }
+
+            // 開始動畫！！
+            //animate();
+            timelineObj.callback(animate);
+        }
+
+
+        var clickornot = 0;
+        var timelineObj = new timeline();
+        timelineObj.setSpeed('60');
+        timelineObj.setColor("gray", "yellow", "white", "white", "blue", "blue");
+        timelineObj.create('timelineDiv');
+
+    
+
+        start();
+        timelineObj.start();
+
+
+
+        $('#timelineDiv').on('click', function (e) {
+
+            var target = $(e.target);
+
+            if (target.attr('id') == 'canvas_timeline') {
+                var timeObj = timelineObj.getTime();
+                console.log(timeObj.hour + ":" + timeObj.minute + ":" + timeObj.seccond);
+                console.log('canvas_timeline click!');
+                clickornot = 1;
+
+            }
+            else {
+                console.log('timelineDiv click!');
+            }
+        });
+    </script>
+
+</body></html>
