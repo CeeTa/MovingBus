@@ -1,6 +1,4 @@
-1.¶ZÂ÷¦Û¤v­pºâ
-2.¼Æ¾Ú¦Û¤v»s§@
-3.°Êµe¥Hcanvas§e²{
-4.°Êµe°j°é¥HrequestAnimationFrame§@§e²{¡A¤£¨Ï¥ÎsetInterval
-5.µe­±¤W¬yºZ«Ü¦h
-6.°t¤Wtimeline.js¥i´£¨ÑpauseªA°È,console¥i¬d¨ì¼È°±ªº®É¨è
+https://ceeta.github.io/MovingBus/
+1.å‹•ç•«ä»¥canvaså‘ˆç¾
+2.å‹•ç•«è¿´åœˆä»¥requestAnimationFrameä½œå‘ˆç¾ï¼Œä¸ä½¿ç”¨setIntervalç•«é¢ä¸Šæµæš¢å¾ˆå¤š
+3.é…ä¸Štimeline.jså¯æä¾›pauseæœå‹™,consoleå¯æŸ¥åˆ°æš«åœçš„æ™‚åˆ»
